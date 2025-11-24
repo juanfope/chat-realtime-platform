@@ -11,9 +11,8 @@ export async function login(username, password) {
     return await res.json();
 }
 
-// Función para obtener mensajes por sala y página
 export async function fetchMessages(room, page = 1, token) {
-    const limit = 20; // opcional, igual que backend
+    const limit = 20;
     const res = await fetch(`${API_URL}/messages/${room}?page=${page}&limit=${limit}`, {
         headers: {
             Authorization: `Bearer ${token}`

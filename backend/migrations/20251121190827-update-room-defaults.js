@@ -15,7 +15,6 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
-    // reversa por si necesitas revertir la migración
     await queryInterface.changeColumn('Rooms', 'type', {
       type: Sequelize.STRING,
       allowNull: true,

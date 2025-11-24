@@ -1,0 +1,74 @@
+{
+	"info": {
+		"_postman_id": "ddbc6d17-cf73-4c9d-8d73-f3a5686af0f1",
+		"name": "App realtime patrones",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "48955136",
+		"_collection_link": "https://juanfope-5727954.postman.co/workspace/Juan-Jose-Forero-Pe%25C3%25B1a's-Workspa~8e40dffe-98c0-450b-80fe-05858f786eca/collection/48955136-ddbc6d17-cf73-4c9d-8d73-f3a5686af0f1?action=share&source=collection_link&creator=48955136"
+	},
+	"item": [
+		{
+			"name": "Registro",
+			"request": {
+				"method": "GET",
+				"header": []
+			},
+			"response": []
+		},
+		{
+			"name": "Login",
+			"request": {
+				"method": "GET",
+				"header": []
+			},
+			"response": []
+		},
+		{
+			"name": "Get mensajes",
+			"request": {
+				"method": "GET",
+				"header": []
+			},
+			"response": []
+		},
+		{
+			"name": "Salas publicas",
+			"request": {
+				"method": "GET",
+				"header": []
+			},
+			"response": []
+		},
+		{
+			"name": "Salas privadas",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"name\": \"VIP\",\r\n  \"type\": \"private\",\r\n  \"password\": \"1234\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:4000/rooms",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"rooms"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 let socket = null;
 
 export function connectSocket(token) {
-    if (socket) return socket; // Reutiliza si ya está conectado
+    if (socket) return socket;
 
     socket = io(import.meta.env.VITE_WS_URL, {
         auth: { token }

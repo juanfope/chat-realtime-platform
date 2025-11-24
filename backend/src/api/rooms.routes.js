@@ -3,7 +3,6 @@ const bcrypt = require("bcryptjs");
 const { Room } = require("../../models");
 const router = express.Router();
 
-// Crear sala
 router.post("/", async (req, res) => {
     try {
         const { name, type, password, ownerId } = req.body;
@@ -17,7 +16,7 @@ router.post("/", async (req, res) => {
             name,
             type,
             password: hashedPassword,
-            ownerId   // <-- agregamos dueño de la sala
+            ownerId
         });
 
         res.json({ message: "Sala creada", room });
@@ -26,20 +25,18 @@ router.post("/", async (req, res) => {
     }
 });
 
-// Listar salas
 router.get("/", async (req, res) => {
     const rooms = await Room.findAll();
     res.json(rooms);
 });
 
-// Eliminar sala solo si es dueño
 router.delete("/:id", async (req, res) => {
     try {
         const room = await Room.findByPk(req.params.id);
         if (!room) return res.status(404).json({ error: "Sala no encontrada" });
 
         // Validar dueño
-        const userId = parseInt(req.headers["x-user-id"]); // o lo que uses para identificar al usuario
+        const userId = parseInt(req.headers["x-user-id"]);
         if (room.ownerId !== userId) {
             return res.status(403).json({ error: "Solo el dueño puede eliminar la sala" });
         }
