@@ -12,28 +12,47 @@ const {
 } = require("../services/presence.service");
 
 let io;
+let channel;
+const QUEUE = "chat_messages";
 
 async function setupRabbitMQ() {
     const connection = await amqp.connect("amqp://admin:admin@localhost");
-    const channel = await connection.createChannel();
-    await channel.assertQueue("chat_messages");
-    return channel;
+    const ch = await connection.createChannel();
+    await ch.assertQueue(QUEUE, { durable: true });
+    return ch;
 }
 
 async function initSocket(server) {
 
     io = new Server(server, {
-        cors: {
-            origin: "*",
-            methods: ["GET", "POST"],
-            allowedHeaders: ["Authorization"],
-            credentials: false,
-        }
+        cors: { origin: "*" }
     });
 
-    const channel = await setupRabbitMQ();
+    console.log("Inicializando RabbitMQ...");
+    channel = await setupRabbitMQ();
+    console.log("RabbitMQ listo, queue:", QUEUE);
 
-    // middleware auth
+
+    channel.consume(
+        QUEUE,
+        async (msg) => {
+            if (!msg) return;
+            try {
+                const parsed = JSON.parse(msg.content.toString());
+                console.log("RabbitMQ -> recibido:", parsed);
+
+                io.to(parsed.room).emit("new_message", parsed);
+
+                channel.ack(msg);
+            } catch (err) {
+                console.error("ERROR en consumer:", err);
+                try { channel.ack(msg); } catch (e) { }
+            }
+        },
+        { noAck: false }
+    );
+
+
     io.use(async (socket, next) => {
         try {
             const token = socket.handshake.auth?.token;
@@ -47,98 +66,115 @@ async function initSocket(server) {
             socket.user = user;
             next();
         } catch (err) {
-            console.error("Error auth:", err);
             next(new Error("Token inválido"));
         }
     });
 
-    // conexión
+
     io.on("connection", (socket) => {
+        console.log(`🟢 Conectado: ${socket.user.username}`);
         userConnected(socket.user, socket.id);
         io.emit("user_online", { id: socket.user.id, username: socket.user.username });
 
-        console.log(`🟢 Usuario conectado: ${socket.user.username}`);
 
-        // --- JOIN ROOM ---
         socket.on("join_room", async ({ room, password }) => {
             try {
+                console.log(`🔑 ${socket.user.username} intenta unirse a sala: ${room}`);
+
                 const roomData = await Room.findOne({ where: { name: room } });
 
-                if (!roomData) return socket.emit("system_message", `La sala "${room}" no existe.`);
-
-                if (roomData.type === "private") {
-                    if (!password) return socket.emit("system_message", `Contraseña requerida.`);
-
-                    const validPass = await bcrypt.compare(password, roomData.password);
-                    if (!validPass) return socket.emit("system_message", `Contraseña incorrecta.`);
+                if (!roomData) {
+                    return socket.emit("system_message", `La sala "${room}" no existe.`);
                 }
 
-                // 🔥 FIX — Primero cargamos mensajes, luego join
+                const currentRooms = [...socket.rooms].filter(r => r !== socket.id);
+
+                if (currentRooms.length > 0) {
+                    currentRooms.forEach(r => {
+                        socket.leave(r);
+                        leaveRoom(socket.user.id, r);
+                    });
+                }
+
+                if (roomData.type === "private") {
+                    if (!password) {
+                        return socket.emit("system_message", `Contraseña requerida para entrar a "${room}".`);
+                    }
+
+                    const validPass = await bcrypt.compare(password, roomData.password);
+                    if (!validPass) {
+                        return socket.emit("system_message", `Contraseña incorrecta para "${room}".`);
+                    }
+                }
+
                 const history = await Message.findAll({
                     where: { room },
                     order: [["createdAt", "ASC"]],
                     limit: 50
                 });
 
-                // 👇 Esto asegura que el usuario reciba también mensajes enviados justo antes de entrar
                 socket.emit("message_history", history);
 
-                // Ahora sí entra
+                // Ahora sí unir
                 socket.join(room);
                 joinRoom(socket.user.id, room);
 
                 io.to(room).emit("room_users", getRoomUsers(room));
-                io.to(room).emit("system_message", `${socket.user.username} entró a "${room}"`);
+                io.to(room).emit("system_message", `${socket.user.username} se unió a "${room}"`);
+
+                console.log(`✔️ ${socket.user.username} ahora está en: ${room}`);
 
             } catch (error) {
-                console.error(error);
+                console.error("Error join_room:", error);
                 socket.emit("system_message", "Error al intentar acceder a la sala.");
             }
         });
 
-        // --- SEND MESSAGE ---
-        socket.on("send_message", async (data) => {
-            const payload = {
-                room: data.room,
-                text: data.text,
-                from: socket.user.username,
-                timestamp: new Date().toISOString()
-            };
 
-            await channel.sendToQueue("chat_messages", Buffer.from(JSON.stringify(payload)));
 
-            await Message.create({
-                room: payload.room,
-                from: payload.from,
-                text: payload.text
-            });
+        socket.on("leave_room", ({ room }) => {
+            socket.leave(room);
+            leaveRoom(socket.user.id, room);
+            io.to(room).emit("system_message", `${socket.user.username} salió`);
+            io.to(room).emit("room_users", getRoomUsers(room));
         });
 
-        // typing events
+
+        socket.on("send_message", async (data) => {
+            try {
+                const payload = {
+                    room: data.room,
+                    text: data.text,
+                    from: socket.user.username,
+                    timestamp: new Date().toISOString(),
+                };
+
+                await Message.create(payload);
+
+                channel.sendToQueue(QUEUE, Buffer.from(JSON.stringify(payload)), {
+                    persistent: true,
+                });
+
+                console.log("Mensaje enviado → RabbitMQ");
+            } catch (err) {
+                socket.emit("system_message", "No se pudo enviar el mensaje");
+            }
+        });
+
+
         socket.on("typing", ({ room }) => {
-            socket.to(room).emit("user_typing", {
-                id: socket.user.id,
-                username: socket.user.username
-            });
+            socket.to(room).emit("user_typing", { username: socket.user.username });
         });
 
         socket.on("stop_typing", ({ room }) => {
-            socket.to(room).emit("user_stop_typing", {
-                id: socket.user.id
-            });
+            socket.to(room).emit("user_stop_typing", { username: socket.user.username });
         });
 
         socket.on("disconnect", () => {
+            console.log(`🔴 ${socket.user.username} desconectado`);
             userDisconnected(socket.user.id);
             io.emit("user_offline", { id: socket.user.id });
-            console.log(`🔴 Usuario desconectado: ${socket.user.username}`);
         });
-    });
-
-    // RabbitMQ -> enviar mensajes a sala
-    channel.consume("chat_messages", (msg) => {
-        const message = JSON.parse(msg.content.toString());
-        io.to(message.room).emit("new_message", message);
     });
 }
 

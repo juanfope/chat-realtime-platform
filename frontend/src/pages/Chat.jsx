@@ -12,8 +12,11 @@ export default function Chat() {
     const token = localStorage.getItem("token");
     const userId = parseInt(localStorage.getItem("userId"));
     const messagesEndRef = useRef(null);
+    const passwordRef = useRef("");
     const TYPING_TIMEOUT = 1500;
     const typingTimeoutRef = useRef(null);
+
+    const socket = getSocket() || connectSocket(token);
 
     const scrollToBottom = () => {
         if (messagesEndRef.current) {
@@ -21,11 +24,11 @@ export default function Chat() {
         }
     };
 
-    const socket = getSocket() || connectSocket(token);
-
     useEffect(() => {
         socket.on("connect", () => {
-            if (currentRoom) socket.emit("join_room", { room: currentRoom });
+            if (currentRoom) {
+                socket.emit("join_room", { room: currentRoom, password: passwordRef.current });
+            }
         });
 
         socket.on("new_message", (msg) => {
@@ -35,21 +38,20 @@ export default function Chat() {
         });
 
         socket.on("system_message", (msgObj) => {
-            if (!msgObj.room || msgObj.room === currentRoom) {
-                setMessages(prev => [...prev, { from: "Sistema", text: msgObj.text || msgObj }]);
-            }
+            setMessages(prev => [...prev, { from: "Sistema", text: msgObj.text || msgObj }]);
         });
 
-        socket.on("user_typing", ({ username, room }) => {
-            if (room === currentRoom) {
-                setTypingUsers(prev => prev.includes(username) ? prev : [...prev, username]);
-            }
+        socket.on("message_history", (history) => {
+            const sorted = [...history].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            setMessages(sorted);
         });
 
-        socket.on("user_stop_typing", ({ username, room }) => {
-            if (room === currentRoom) {
-                setTypingUsers(prev => prev.filter(u => u !== username));
-            }
+        socket.on("user_typing", ({ username }) => {
+            setTypingUsers(prev => prev.includes(username) ? prev : [...prev, username]);
+        });
+
+        socket.on("user_stop_typing", ({ username }) => {
+            setTypingUsers(prev => prev.filter(u => u !== username));
         });
 
         return () => {
@@ -60,6 +62,7 @@ export default function Chat() {
             socket.off("user_stop_typing");
         };
     }, [currentRoom]);
+
 
     useEffect(() => {
         const loadRooms = async () => {
@@ -76,34 +79,16 @@ export default function Chat() {
         loadRooms();
     }, []);
 
-    useEffect(() => {
-        if (!currentRoom) return;
+    useEffect(() => scrollToBottom(), [messages]);
 
-        const loadHistory = async () => {
-            try {
-                const res = await fetchMessages(currentRoom, 1, token);
-                const sorted = (res.messages || []).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                setMessages(sorted);
-                setPage(1);
-            } catch (err) {
-                console.error("Error cargando historial:", err);
-            }
-        };
-        loadHistory();
-    }, [currentRoom]);
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
 
     const handleTyping = (text) => {
         setMessage(text);
         if (!currentRoom) return;
         socket.emit("typing", { room: currentRoom });
+
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-            socket.emit("stop_typing", { room: currentRoom });
-        }, TYPING_TIMEOUT);
+        typingTimeoutRef.current = setTimeout(() => socket.emit("stop_typing", { room: currentRoom }), TYPING_TIMEOUT);
     };
 
     const sendMessage = () => {
@@ -113,8 +98,18 @@ export default function Chat() {
         setMessage("");
     };
 
-    const joinRoom = (roomName, password = null) => {
-        socket.emit("join_room", { room: roomName, password });
+    const joinRoom = (roomName, password = "") => {
+        if (currentRoom) {
+            socket.emit("leave_room", { room: currentRoom });
+        }
+
+        passwordRef.current = password || ""; // guardar la contraseña para reintentos
+
+        socket.emit("join_room", {
+            room: roomName,
+            password: passwordRef.current.trim()
+        });
+
         setCurrentRoom(roomName);
         setMessages([]);
         setTypingUsers([]);
@@ -146,8 +141,10 @@ export default function Chat() {
                     "x-user-id": userId
                 }
             });
+
             setRooms(prev => prev.filter(r => r.id !== roomId));
-            if (currentRoom && rooms.find(r => r.id === roomId)?.name === currentRoom) {
+
+            if (rooms.find(r => r.id === roomId)?.name === currentRoom) {
                 setCurrentRoom(null);
                 setMessages([]);
             }
@@ -160,18 +157,16 @@ export default function Chat() {
         <div style={{ padding: 20 }}>
             <h2>Chat</h2>
 
-            {/* Lista de salas */}
+            {/* LISTA DE SALAS */}
             <div style={{ marginBottom: 15 }}>
                 <h4>Salas disponibles</h4>
                 <ul style={{ listStyle: "none", padding: 0 }}>
                     {rooms.map(r => (
                         <li key={r.id} style={{ marginBottom: 8 }}>
-                            <span style={{ marginRight: 10 }}>
-                                {r.name} ({r.type})
-                            </span>
+                            <strong>{r.name}</strong> ({r.type}){" "}
                             {r.type === "private" ? (
                                 <button onClick={() => {
-                                    const pass = prompt(`Contraseña para ${r.name}:`);
+                                    const pass = prompt(`Contraseña para ${r.name}:`) || "";
                                     joinRoom(r.name, pass);
                                 }}>Entrar</button>
                             ) : (
@@ -180,13 +175,7 @@ export default function Chat() {
                             {r.ownerId === userId && (
                                 <button
                                     onClick={() => deleteRoom(r.id)}
-                                    style={{
-                                        marginLeft: 5,
-                                        backgroundColor: "red",
-                                        color: "white",
-                                        border: "none",
-                                        cursor: "pointer"
-                                    }}
+                                    style={{ marginLeft: 5, backgroundColor: "red", color: "white", cursor: "pointer" }}
                                 >
                                     Eliminar
                                 </button>
@@ -195,14 +184,14 @@ export default function Chat() {
                     ))}
                 </ul>
 
-                {/* Crear sala */}
+                {/* CREAR SALA */}
                 <h4>Crear sala</h4>
                 <input placeholder="Nombre" id="newRoomName" />
                 <select id="newRoomType">
                     <option value="public">Pública</option>
                     <option value="private">Privada</option>
                 </select>
-                <input placeholder="Contraseña" id="newRoomPassword" />
+                <input placeholder="Contraseña (si privada)" id="newRoomPassword" />
                 <button onClick={() => createRoom(
                     document.getElementById("newRoomName").value,
                     document.getElementById("newRoomType").value,
@@ -210,39 +199,29 @@ export default function Chat() {
                 )}>Crear</button>
             </div>
 
-            {/* Chat de la sala seleccionada */}
+            {/* CHAT */}
             {currentRoom && (
                 <>
                     <h3>Sala: {currentRoom}</h3>
                     <div style={{ border: "1px solid", height: 300, overflowY: "auto", padding: 5 }}>
                         {messages.map((msg, i) => (
-                            <div key={i}>
-                                <strong>{msg.from}:</strong> {msg.text}
-                            </div>
+                            <div key={i}><strong>{msg.from}:</strong> {msg.text}</div>
                         ))}
                         <div ref={messagesEndRef} />
                     </div>
 
                     {typingUsers.length > 0 && (
-                        <div style={{ fontStyle: "italic", marginBottom: 5 }}>
-                            {typingUsers.join(", ")} {typingUsers.length === 1 ? "está" : "están"} escribiendo...
-                        </div>
+                        <p style={{ fontStyle: "italic" }}>
+                            {typingUsers.join(", ")} está escribiendo...
+                        </p>
                     )}
 
-                    <input
-                        value={message}
-                        onChange={e => handleTyping(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && sendMessage()}
-                        style={{ width: "80%" }}
-                        placeholder="Escribe tu mensaje..."
-                    />
-                    <button
-                        onClick={sendMessage}
-                        style={{ width: "18%", marginLeft: "2%" }}
-                        disabled={!message.trim()}
-                    >
-                        Enviar
-                    </button>
+                    <input value={message} onChange={e => handleTyping(e.target.value)}
+                        style={{ width: "75%" }}
+                        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                        placeholder="Escribe tu mensaje..." />
+
+                    <button onClick={sendMessage}>Enviar</button>
                 </>
             )}
         </div>
