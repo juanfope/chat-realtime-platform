@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Chat Cliente</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial;
+            display: flex;
+            gap: 20px;
+        }
+
+        #users,
+        #roomUsers {
+            border: 1px solid #ddd;
+            padding: 10px;
+            width: 200px;
+        }
+
+        #messages {
+            border: 1px solid #ddd;
+            padding: 10px;
+            width: 400px;
+            height: 400px;
+            overflow-y: scroll;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div>
+        <h3>Usuarios Online</h3>
+        <ul id="users"></ul>
+
+        <h3>Usuarios en Sala</h3>
+        <ul id="roomUsers"></ul>
+    </div>
+
+    <div>
+        <h3>Chat</h3>
+        <div id="messages"></div>
+
+        <input id="room" placeholder="Sala (ej: general)">
+        <button onclick="joinRoom()">Entrar Sala</button>
+        <br><br>
+
+        <input id="msg" placeholder="Escribe un mensaje">
+        <button onclick="sendMessage()">Enviar</button>
+    </div>
+
+    <script>
+        const token = "AQUI_TU_TOKEN";
+        const socket = io("http://localhost:4000", { auth: { token } });
+
+        const usersList = document.getElementById("users");
+        const roomUsersList = document.getElementById("roomUsers");
+        const messagesBox = document.getElementById("messages");
+
+        function addMessage(text) {
+            messagesBox.innerHTML += `<div>${text}</div>`;
+            messagesBox.scrollTop = messagesBox.scrollHeight;
+        }
+
+        socket.on("connect", () => addMessage("🟢 Conectado al servidor"));
+
+        socket.on("system_message", (msg) => addMessage("⚠️ " + msg));
+
+        socket.on("new_message", msg => addMessage(`💬 ${msg.from}: ${msg.text}`));
+
+        socket.on("user_online", user => {
+            const li = document.createElement("li");
+            li.id = `user-${user.id}`;
+            li.textContent = user.username;
+            usersList.appendChild(li);
+        });
+
+        socket.on("user_offline", user => {
+            const el = document.getElementById(`user-${user.id}`);
+            if (el) el.remove();
+        });
+
+        socket.on("room_users", users => {
+            roomUsersList.innerHTML = "";
+            users.forEach(u => {
+                const li = document.createElement("li");
+                li.textContent = u.username;
+                roomUsersList.appendChild(li);
+            });
+        });
+
+        function joinRoom() {
+            const room = document.getElementById("room").value;
+            socket.emit("join_room", { room });
+        }
+
+        function sendMessage() {
+            const room = document.getElementById("room").value;
+            const text = document.getElementById("msg").value;
+            socket.emit("send_message", { room, text });
+            document.getElementById("msg").value = "";
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,9 @@
+{
+  "development": {
+    "username": "postgres",
+    "password": "postgres",
+    "database": "chatdb",
+    "host": "localhost",
+    "dialect": "postgres"
+  }
+}

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Login Chat</title>
+</head>
+
+<body>
+    <h2>Iniciar sesión</h2>
+
+    <input id="username" placeholder="Usuario" /><br><br>
+    <input id="password" type="password" placeholder="Contraseña" /><br><br>
+
+    <button id="loginBtn">Entrar</button>
+
+    <script>
+        console.log("📌 Script cargado");
+
+        async function login() {
+            console.log("👉 Botón presionado");
+
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            if (!username || !password) {
+                alert("Completa usuario y contraseña");
+                return;
+            }
+
+            try {
+                const res = await fetch("http://localhost:4000/auth/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!res.ok) {
+                    alert("Credenciales incorrectas o servidor no disponible.");
+                    console.error("❌ Error HTTP:", res.status);
+                    return;
+                }
+
+                const data = await res.json();
+                console.log("📩 Respuesta backend:", data);
+
+                if (!data.token) {
+                    alert("Error: No se recibió token del servidor.");
+                    return;
+                }
+
+                // Guardar token
+                localStorage.setItem("token", data.token);
+
+                alert("✔️ Login exitoso. Redirigiendo...");
+                window.location.href = "chat.html"; // próxima pantalla
+
+            } catch (err) {
+                console.error("❌ Error en login:", err);
+                alert("No se pudo conectar al servidor.");
+            }
+        }
+
+        document.getElementById("loginBtn").addEventListener("click", login);
+    </script>
+
+</body>
+
+</html>

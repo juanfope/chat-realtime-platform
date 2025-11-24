@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Chat</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+
+<body>
+    <h2>Chat</h2>
+
+    <div id="status">Conectando...</div>
+
+    <input id="room" placeholder="general" />
+    <button onclick="joinRoom()">Entrar Sala</button> <br><br>
+
+    <textarea id="chat" rows="15" cols="60" disabled></textarea><br><br>
+
+    <input id="msg" placeholder="Mensaje" />
+    <button onclick="sendMessage()">Enviar</button>
+
+    <script>
+        const token = localStorage.getItem("token");
+
+        const socket = io("http://localhost:4000", {
+            auth: { token }
+        });
+
+        socket.on("connect", () => {
+            document.getElementById("status").innerText = "🟢 Conectado";
+        });
+
+        socket.on("system_message", msg => {
+            chat.value += "[SISTEMA] " + msg + "\n";
+        });
+
+        socket.on("new_message", msg => {
+            chat.value += msg.from + ": " + msg.text + "\n";
+        });
+
+        function joinRoom() {
+            const room = document.getElementById("room").value;
+            socket.emit("join_room", { room });
+        }
+
+        function sendMessage() {
+            const room = document.getElementById("room").value;
+            const text = document.getElementById("msg").value;
+
+            socket.emit("send_message", { room, text });
+            document.getElementById("msg").value = "";
+        }
+    </script>
+
+</body>
+
+</html>

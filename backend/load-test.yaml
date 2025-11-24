@@ -1,0 +1,34 @@
+config:
+  target: "ws://localhost:3001"
+  phases:
+    - duration: 10
+      arrivalRate: 10
+
+  engine: "socketio"
+
+  ##socketio:
+    ##transports: ["websocket"]
+    ##auth:
+      ##token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJqdWFuIiwiaWF0IjoxNzYzOTQzNjA3LCJleHAiOjE3NjQ1NDg0MDd9.3Bw2MUjGICwwPkY7vpqljUeDsE8s75OwHRj1nF0S6-0"
+
+  socketio:
+    transports: ["websocket"]
+    extraHeaders:
+      Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJqdWFuIiwiaWF0IjoxNzYzOTQzOTQ5LCJleHAiOjE3NjQ1NDg3NDl9.Mgqqbt_4PMfGI-s1XXhSK9gL9KnhJL2hrU1s9W2bdrQ"
+
+scenarios:
+  - name: "Usuarios envían mensajes"
+    flow:
+      - emit:
+          channel: "join_room"
+          data:
+            room: "general"
+
+      - loop:
+          - emit:
+              channel: "send_message"
+              data:
+                room: "general"
+                text: "Hola desde load test"
+          - think: 1
+        count: 3
